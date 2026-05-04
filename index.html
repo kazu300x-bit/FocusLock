@@ -539,20 +539,18 @@
       <div class="tasks-header">
         <span class="tasks-title">TODAY'S TASKS</span>
       </div>
-      <div class="task-item">
-        <div class="task-check" id="t1" onclick="toggleTask(1)"></div>
-        <span class="task-name" id="tn1">論証：1科目</span>
-        <span class="task-subject">論証</span>
-      </div>
-      <div class="task-item">
-        <div class="task-check" id="t2" onclick="toggleTask(2)"></div>
-        <span class="task-name" id="tn2">重問：20問</span>
-        <span class="task-subject">重問</span>
-      </div>
-      <div class="task-item">
-        <div class="task-check" id="t3" onclick="toggleTask(3)"></div>
-        <span class="task-name" id="tn3">起案：2通</span>
-        <span class="task-subject">起案</span>
+     <div class="tasks-block">
+  <div class="tasks-header">
+    <span class="tasks-title">TODAY'S TASKS</span>
+  </div>
+
+  <div style="margin-bottom:10px; display:flex; gap:6px;">
+    <input id="taskInput" placeholder="タスク追加" style="flex:1; padding:6px;">
+    <button onclick="addTask()">追加</button>
+  </div>
+
+  <div id="taskList"></div>
+</div>
       </div>
     </div>
   </div>
@@ -694,7 +692,7 @@
     selectedPenalty: 'light',
     sessionScore: 100,
     studiedSecs: 0,
-    taskDone: [false, false, false],
+    
     streak: 7,
     totalSessions: 0
   };
@@ -901,26 +899,85 @@
     showScreen('home');
   }
 
-  // ── TASKS ──
-  function toggleTask(n) {
-    state.taskDone[n-1] = !state.taskDone[n-1];
-    renderTasks();
-    updateProgress();
-    save();
+ // ===== タスク管理（最大3） =====
+var tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+
+function saveTasks() {
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+}
+
+function renderTasks() {
+  var list = el("taskList");
+  list.innerHTML = "";
+
+  tasks.forEach(function(task, index) {
+    var div = document.createElement("div");
+    div.className = "task-item";
+
+    div.innerHTML = 
+      <div class="task-check ${task.done ? 'done' : ''}" onclick="toggleTask(${index})"></div>
+      <input value="${task.text}" onchange="editTask(${index}, this.value)" style="flex:1;">
+      <button onclick="deleteTask(${index})">削除</button>
+    ;
+
+    list.appendChild(div);
+  });
+
+  var input = el("taskInput");
+  if (tasks.length >= 3) {
+    input.disabled = true;
+    input.placeholder = "最大3タスクまで";
+  } else {
+    input.disabled = false;
+    input.placeholder = "タスク追加";
   }
-  function renderTasks() {
-    for (var i = 1; i <= 3; i++) {
-      var done = state.taskDone[i-1];
-      el('t' + i).classList.toggle('done', done);
-      el('tn' + i).classList.toggle('done', done);
-    }
+
+  updateProgress();
+}
+
+function addTask() {
+  var input = el("taskInput");
+
+  if (tasks.length >= 3) return;
+  if (!input.value.trim()) return;
+
+  tasks.push({ text: input.value.trim(), done: false });
+  input.value = "";
+
+  saveTasks();
+  renderTasks();
+}
+
+function toggleTask(index) {
+  tasks[index].done = !tasks[index].done;
+  saveTasks();
+  renderTasks();
+}
+
+function editTask(index, value) {
+  tasks[index].text = value;
+  saveTasks();
+}
+
+function deleteTask(index) {
+  tasks.splice(index, 1);
+  saveTasks();
+  renderTasks();
+}
+
+function updateProgress() {
+  if (tasks.length === 0) {
+    el('today-pct').textContent = "0%";
+    el('prog-fill').style.width = "0%";
+    return;
   }
-  function updateProgress() {
-    var done = state.taskDone.filter(Boolean).length;
-    var pct = Math.round(done / 3 * 100);
-    el('today-pct').textContent = pct + '%';
-    el('prog-fill').style.width = pct + '%';
-  }
+
+  var done = tasks.filter(function(t){ return t.done; }).length;
+  var pct = Math.round(done / tasks.length * 100);
+
+  el('today-pct').textContent = pct + "%";
+  el('prog-fill').style.width = pct + "%";
+}
 
   window.toggleTask = toggleTask;
   window.selectPenalty = selectPenalty;
