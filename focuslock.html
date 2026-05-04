@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FocusLock</title>
+
+  <!-- PWA -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FocusLock">
+  <meta name="theme-color" content="#1a0a0a">
+
+  <!-- OGP（SNSシェア用） -->
+  <meta property="og:title" content="FocusLock — 逃げたら損する勉強タイマー">
+  <meta property="og:description" content="逃げたら損する。続けたら最適化される。">
+  <meta property="og:type" content="website">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red: #E24B4A;
+      --red-dark: #A32D2D;
+      --red-bg: #FCEBEB;
+      --amber: #EF9F27;
+      --amber-bg: #FAEEDA;
+      --amber-dark: #854F0B;
+      --green: #639922;
+      --green-bg: #EAF3DE;
+      --green-dark: #3B6D11;
+      --bg: #ffffff;
+      --bg2: #f5f4f0;
+      --bg3: #eeecea;
+      --text: #1a1a18;
+      --muted: #6b6a66;
+      --hint: #9b9a96;
+      --border: rgba(0,0,0,0.10);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111110;
+        --bg2: #1c1c1a;
+        --bg3: #242422;
+        --text: #f0ede8;
+        --muted: #8a8a86;
+        --hint: #5a5a56;
+        --border: rgba(255,255,255,0.10);
+        --red-bg: #2a1010;
+        --amber-bg: #221800;
+        --green-bg: #0d1a00;
+      }
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg3);
+      font-family: 'Noto Sans JP', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      overflow: hidden;
+    }
+
+    /* ── SHELL ── */
+    .app-shell {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .phone {
+      width: 100%;
+      max-width: 430px;
+      height: 100%;
+      max-height: 900px;
+      background: var(--bg);
+      overflow: hidden;
+      position: relative;
+      border-radius: 0;
+    }
+
+    @media (min-width: 500px) {
+      .phone {
+        border-radius: 32px;
+        border: 0.5px solid var(--border);
+        box-shadow: 0 32px 80px rgba(0,0,0,0.18);
+        max-height: 820px;
+      }
+    }
+
+    /* ── SCREENS ── */
+    .screen {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .screen.active { display: flex; }
+
+    /* safe area */
+    .safe-top { padding-top: max(28px, env(safe-area-inset-top)); }
+    .safe-bot { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+
+    /* ════════════════════════════
+       HOME
+    ════════════════════════════ */
+    #home {
+      padding: 0 22px;
+      background: var(--bg);
+    }
+
+    .home-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: max(32px, env(safe-area-inset-top));
+      padding-bottom: 4px;
+    }
+
+    .app-name {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px; font-weight: 700;
+      color: var(--red);
+      letter-spacing: 3px;
+    }
+
+    .streak-badge {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--amber-bg); color: var(--amber-dark);
+      font-size: 12px; font-weight: 500;
+      padding: 5px 11px; border-radius: 20px;
+    }
+    .streak-dot {
+      width: 6px; height: 6px;
+      background: var(--amber); border-radius: 50%;
+    }
+
+    .timer-block {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 18px 0 12px;
+    }
+    .timer-label {
+      font-size: 10px; color: var(--hint);
+      letter-spacing: 3px; margin-bottom: 6px;
+    }
+    .timer-display {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(56px, 16vw, 72px);
+      font-weight: 700; color: var(--text);
+      line-height: 1; letter-spacing: -2px;
+    }
+    .timer-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    .duration-row {
+      display: flex; gap: 8px; justify-content: center;
+      margin-bottom: 14px;
+    }
+    .dur-btn {
+      background: var(--bg2); border: 0.5px solid var(--border);
+      border-radius: 20px; padding: 7px 15px;
+      font-size: 13px; color: var(--muted); cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .dur-btn.active {
+      background: var(--red); color: #fff; border-color: var(--red);
+    }
+
+    .start-btn {
+      width: 100%; padding: 17px;
+      background: var(--red); color: #fff;
+      border: none; border-radius: 16px;
+      font-family: 'Space Mono', monospace;
+      font-size: 16px; font-weight: 700; letter-spacing: 3px;
+      cursor: pointer; transition: all 0.15s;
+      margin-bottom: 18px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .start-btn:active { transform: scale(0.97); opacity: 0.9; }
+
+    .progress-block { margin-bottom: 14px; }
+    .prog-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 7px;
+    }
+    .prog-title { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+    .prog-pct {
+      font-family: 'Space Mono', monospace;
+      font-size: 14px; font-weight: 700; color: var(--text);
+    }
+    .prog-bar {
+      height: 4px; background: var(--bg2);
+      border-radius: 2px; overflow: hidden;
+    }
+    .prog-fill {
+      height: 100%; background: var(--red);
+      border-radius: 2px; transition: width 0.4s ease;
+    }
+
+    .tasks-block { flex: 1; }
+    .tasks-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px;
+    }
+    .tasks-title { font-size: 11px; color: var(--hint); letter-spacing: 2px; }
+    .add-task-btn {
+      font-size: 11px; color: var(--red);
+      background: none; border: none; cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif;
+      padding: 2px 0;
+    }
+
+    .task-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 0;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .task-item:last-child { border-bottom: none; }
+
+    .task-check {
+      width: 20px; height: 20px; border-radius: 50%;
+      border: 1.5px solid var(--border); flex-shrink: 0;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .task-check.done { background: var(--green); border-color: var(--green); }
+    .task-check.done::after {
+      content: '';
+      width: 5px; height: 8px;
+      border: 2px solid #fff;
+      border-left: none; border-top: none;
+      transform: rotate(45deg) translate(-1px, -1px);
+      display: block;
+    }
+
+    .task-name { font-size: 14px; color: var(--text); flex: 1; line-height: 1.4; }
+    .task-name.done { text-decoration: line-through; color: var(--hint); }
+    .task-subject {
+      font-size: 11px; color: var(--muted);
+      background: var(--bg2); padding: 3px 9px; border-radius: 10px;
+      white-space: nowrap;
+    }
+
+    /* ════════════════════════════
+       FOCUS
+    ════════════════════════════ */
+    #focus {
+      background: #120808;
+      color: #fff;
+    }
+
+    .focus-inner {
+      display: flex; flex-direction: column;
+      height: 100%;
+      padding: max(36px, env(safe-area-inset-top)) 24px max(28px, env(safe-area-inset-bottom));
+    }
+
+    .focus-top {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 2px;
+    }
+    .focus-label {
+      font-size: 10px; letter-spacing: 3px;
+      color: rgba(255,255,255,0.35);
+    }
+    .focus-score-live {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px; color: var(--amber);
+    }
+
+    .focus-subject {
+      font-size: 15px; font-weight: 500;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 0;
+    }
+
+    .focus-center {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+    }
+
+    .focus-time {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(64px, 20vw, 88px);
+      font-weight: 700; color: #fff;
+      line-height: 1; letter-spacing: -3px;
+    }
+
+    .ring-wrap { position: relative; }
+    .ring-wrap svg { display: block; }
+
+    .focus-ring-track { stroke: rgba(255,255,255,0.07); fill: none; }
+    .focus-ring-fill {
+      fill: none; stroke: var(--red); stroke-linecap: round;
+      transition: stroke-dashoffset 1s linear;
+    }
+
+    .ring-center-text {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .ring-pct {
+      font-family: 'Space Mono', monospace;
+      font-size: 22px; font-weight: 700; color: rgba(255,255,255,0.7);
+    }
+    .ring-done { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; }
+
+    .escape-btn {
+      width: 100%; padding: 16px;
+      background: transparent; color: var(--red);
+      border: 1.5px solid rgba(226,75,74,0.5);
+      border-radius: 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px; font-weight: 700; letter-spacing: 2px;
+      cursor: pointer; transition: all 0.2s;
+      margin-top: auto;
+    }
+    .escape-btn:active { background: rgba(226,75,74,0.12); }
+
+    /* ════════════════════════════
+       PENALTY
+    ════════════════════════════ */
+    #penalty {
+      padding: max(40px, env(safe-area-inset-top)) 22px max(28px, env(safe-area-inset-bottom));
+      background: var(--bg);
+    }
+
+    .penalty-head { margin-bottom: 20px; }
+    .penalty-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 22px; font-weight: 700;
+      color: var(--red); margin-bottom: 6px;
+    }
+    .penalty-sub { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+    .penalty-counter {
+      display: flex; align-items: baseline; gap: 8px;
+      margin-bottom: 22px;
+    }
+    .penalty-num {
+      font-family: 'Space Mono', monospace;
+      font-size: 52px; font-weight: 700; color: var(--text);
+    }
+    .penalty-unit { font-size: 14px; color: var(--muted); }
+
+    .penalty-opts { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+    .penalty-opt {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px;
+      border: 0.5px solid var(--border);
+      border-radius: 12px; cursor: pointer;
+      transition: all 0.15s; background: var(--bg);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .penalty-opt.selected { border-color: var(--red); background: var(--red-bg); }
+
+    .penalty-opt-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 1.5px solid var(--border); flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .penalty-opt.selected .penalty-opt-dot {
+      background: var(--red); border-color: var(--red);
+    }
+
+    .penalty-opt-text { flex: 1; }
+    .penalty-opt-name { font-size: 14px; font-weight: 500; color: var(--text); }
+    .penalty-opt-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .penalty-opt-badge {
+      font-size: 11px; padding: 3px 9px;
+      border-radius: 10px; font-weight: 500; white-space: nowrap;
+    }
+    .badge-light { background: var(--amber-bg); color: var(--amber-dark); }
+    .badge-mid   { background: var(--red-bg);   color: var(--red-dark); }
+    .badge-heavy { background: #F7C1C1;          color: var(--red-dark); }
+
+    .penalty-btns { display: flex; gap: 10px; }
+    .back-btn {
+      flex: 1; padding: 14px;
+      background: var(--bg2); border: 0.5px solid var(--border);
+      border-radius: 12px; color: var(--muted); cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif; font-size: 14px;
+    }
+    .confirm-escape-btn {
+      flex: 2; padding: 14px;
+      background: var(--red); color: #fff; border: none;
+      border-radius: 12px; cursor: pointer;
+      font-family: 'Space Mono', monospace;
+      font-size: 13px; font-weight: 700; letter-spacing: 1px;
+    }
+    .confirm-escape-btn:active { opacity: 0.85; }
+
+    /* ════════════════════════════
+       RESULT
+    ════════════════════════════ */
+    #result {
+      padding: max(36px, env(safe-area-inset-top)) 22px max(28px, env(safe-area-inset-bottom));
+      background: var(--bg);
+    }
+
+    .result-header { text-align: center; margin-bottom: 20px; }
+    .result-label {
+      font-size: 10px; letter-spacing: 3px;
+      color: var(--hint); margin-bottom: 5px;
+    }
+    .result-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 22px; font-weight: 700; color: var(--text);
+    }
+
+    .score-display {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 22px; margin-bottom: 16px;
+      background: var(--bg2); border-radius: 16px;
+    }
+    .score-num {
+      font-family: 'Space Mono', monospace;
+      font-size: 76px; font-weight: 700; line-height: 1;
+    }
+    .score-unit { font-size: 13px; color: var(--muted); margin-top: 3px; }
+    .score-grade {
+      margin-top: 8px; font-size: 12px;
+      padding: 4px 14px; border-radius: 12px; font-weight: 500;
+    }
+
+    .ai-comment {
+      padding: 14px 16px; margin-bottom: 16px;
+      border-left: 3px solid var(--red);
+      background: var(--bg2);
+      border-radius: 0 12px 12px 0;
+    }
+    .ai-tag {
+      font-size: 9px; letter-spacing: 2px;
+      color: var(--red); margin-bottom: 4px;
+    }
+    .ai-text { font-size: 14px; color: var(--text); line-height: 1.6; }
+
+    .result-stats {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      padding: 12px 14px; background: var(--bg2);
+      border-radius: 12px;
+    }
+    .stat-lbl { font-size: 11px; color: var(--hint); margin-bottom: 3px; }
+    .stat-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 20px; font-weight: 700; color: var(--text);
+    }
+    .stat-val.red   { color: var(--red); }
+    .stat-val.green { color: var(--green); }
+
+    .done-btn {
+      width: 100%; padding: 16px;
+      background: var(--text); color: var(--bg);
+      border: none; border-radius: 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 14px; font-weight: 700; letter-spacing: 2px;
+      cursor: pointer;
+    }
+    .done-btn:active { opacity: 0.85; }
+
+    /* ════════════════════════════
+       WAITING OVERLAY（強制待機）
+    ════════════════════════════ */
+    .wait-overlay {
+      display: none;
+      position: absolute; inset: 0;
+      background: rgba(10,0,0,0.92);
+      z-index: 100;
+      flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      border-radius: inherit;
+    }
+    .wait-overlay.active { display: flex; }
+    .wait-num {
+      font-family: 'Space Mono', monospace;
+      font-size: 80px; font-weight: 700; color: var(--red);
+      line-height: 1;
+    }
+    .wait-msg { font-size: 14px; color: rgba(255,255,255,0.5); letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+
+<div class="app-shell">
+<div class="phone" id="phone">
+
+  <!-- ══ HOME ══ -->
+  <div class="screen active" id="home">
+    <div class="home-header">
+      <span class="app-name">FOCUSLOCK</span>
+      <div class="streak-badge">
+        <div class="streak-dot"></div>
+        <span id="streak-count">7</span>日連続
+      </div>
+    </div>
+
+    <div class="timer-block">
+      <div class="timer-label">SET DURATION</div>
+      <div class="timer-display" id="home-time">25:00</div>
+      <div class="timer-sub">開いたら即開始</div>
+    </div>
+
+    <div class="duration-row">
+      <button class="dur-btn active" data-mins="25">25分</button>
+      <button class="dur-btn" data-mins="45">45分</button>
+      <button class="dur-btn" data-mins="60">60分</button>
+      <button class="dur-btn" data-mins="90">90分</button>
+    </div>
+
+    <button class="start-btn" id="start-btn">▶  START</button>
+
+    <div class="progress-block">
+      <div class="prog-header">
+        <span class="prog-title">TODAY'S PROGRESS</span>
+        <span class="prog-pct" id="today-pct">33%</span>
+      </div>
+      <div class="prog-bar">
+        <div class="prog-fill" id="prog-fill" style="width:33%"></div>
+      </div>
+    </div>
+
+    <div class="tasks-block">
+      <div class="tasks-header">
+        <span class="tasks-title">TODAY'S TASKS</span>
+      </div>
+      <div class="task-item">
+        <div class="task-check" id="t1" onclick="toggleTask(1)"></div>
+        <span class="task-name" id="tn1">数学：微分積分 第3章</span>
+        <span class="task-subject">数学</span>
+      </div>
+      <div class="task-item">
+        <div class="task-check" id="t2" onclick="toggleTask(2)"></div>
+        <span class="task-name" id="tn2">英語：長文読解 10問</span>
+        <span class="task-subject">英語</span>
+      </div>
+      <div class="task-item">
+        <div class="task-check" id="t3" onclick="toggleTask(3)"></div>
+        <span class="task-name" id="tn3">物理：力学演習</span>
+        <span class="task-subject">物理</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ FOCUS ══ -->
+  <div class="screen" id="focus">
+    <div class="focus-inner">
+      <div class="focus-top">
+        <span class="focus-label">FOCUS MODE</span>
+        <span class="focus-score-live">SCORE <span id="live-score">100</span></span>
+      </div>
+      <div class="focus-subject" id="focus-subject">英語：長文読解 10問</div>
+
+      <div class="focus-center">
+        <div class="focus-time" id="focus-time">25:00</div>
+        <div class="ring-wrap">
+          <svg width="140" height="140">
+            <circle class="focus-ring-track" cx="70" cy="70" r="60" stroke-width="5"/>
+            <circle class="focus-ring-fill" id="ring-fill"
+              cx="70" cy="70" r="60"
+              stroke-width="5"
+              stroke-dasharray="376.99"
+              stroke-dashoffset="0"
+              transform="rotate(-90 70 70)"/>
+          </svg>
+          <div class="ring-center-text">
+            <div class="ring-pct" id="ring-pct">0%</div>
+            <div class="ring-done">完了</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="escape-btn" id="escape-btn">⚠  離脱する</button>
+    </div>
+  </div>
+
+  <!-- ══ PENALTY ══ -->
+  <div class="screen" id="penalty">
+    <div class="penalty-head">
+      <div class="penalty-title">ESCAPE?</div>
+      <div class="penalty-sub">本当に離脱しますか？<br>ペナルティを選んでください。</div>
+    </div>
+
+    <div class="penalty-counter">
+      <span class="penalty-num" id="exit-count">1</span>
+      <span class="penalty-unit">回目の離脱</span>
+    </div>
+
+    <div class="penalty-opts">
+      <div class="penalty-opt selected" id="opt-light" onclick="selectPenalty('light')">
+        <div class="penalty-opt-dot"></div>
+        <div class="penalty-opt-text">
+          <div class="penalty-opt-name">ポイント減少</div>
+          <div class="penalty-opt-desc">スコア −20 ／ ストリーク維持</div>
+        </div>
+        <span class="penalty-opt-badge badge-light">軽い</span>
+      </div>
+      <div class="penalty-opt" id="opt-mid" onclick="selectPenalty('mid')">
+        <div class="penalty-opt-dot"></div>
+        <div class="penalty-opt-text">
+          <div class="penalty-opt-name">強制1分待機</div>
+          <div class="penalty-opt-desc">操作不可60秒 ＋ スコア −30</div>
+        </div>
+        <span class="penalty-opt-badge badge-mid">中</span>
+      </div>
+      <div class="penalty-opt" id="opt-heavy" onclick="selectPenalty('heavy')">
+        <div class="penalty-opt-dot"></div>
+        <div class="penalty-opt-text">
+          <div class="penalty-opt-name">ストリークリセット</div>
+          <div class="penalty-opt-desc">連続日数ゼロ ＋ スコア −50</div>
+        </div>
+        <span class="penalty-opt-badge badge-heavy">重い</span>
+      </div>
+    </div>
+
+    <div class="penalty-btns">
+      <button class="back-btn" onclick="backToFocus()">← 戻る</button>
+      <button class="confirm-escape-btn" onclick="confirmEscape()">離脱を確定</button>
+    </div>
+  </div>
+
+  <!-- ══ RESULT ══ -->
+  <div class="screen" id="result">
+    <div class="result-header">
+      <div class="result-label">SESSION COMPLETE</div>
+      <div class="result-title" id="result-title">お疲れ様！</div>
+    </div>
+
+    <div class="score-display">
+      <div class="score-num" id="final-score">—</div>
+      <div class="score-unit">集中スコア / 100</div>
+      <div class="score-grade" id="score-grade"></div>
+    </div>
+
+    <div class="ai-comment">
+      <div class="ai-tag">AI COMMENT</div>
+      <div class="ai-text" id="ai-comment">計算中…</div>
+    </div>
+
+    <div class="result-stats">
+      <div class="stat-card">
+        <div class="stat-lbl">勉強時間</div>
+        <div class="stat-val green" id="study-time">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">離脱回数</div>
+        <div class="stat-val red" id="exit-num">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">総セッション</div>
+        <div class="stat-val" id="total-sessions">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">連続日数</div>
+        <div class="stat-val" id="streak-result">—</div>
+      </div>
+    </div>
+
+    <button class="done-btn" onclick="goHome()">ホームに戻る</button>
+  </div>
+
+  <!-- 強制待機オーバーレイ -->
+  <div class="wait-overlay" id="wait-overlay">
+    <div class="wait-num" id="wait-num">60</div>
+    <div class="wait-msg">操作不可 — ペナルティ中</div>
+  </div>
+
+</div><!-- /phone -->
+</div><!-- /shell -->
+
+<script>
+  // ── State ──
+  var state = {
+    selectedMins: 25,
+    timerInterval: null,
+    totalSecs: 25 * 60,
+    remainSecs: 25 * 60,
+    exitCount: 0,
+    selectedPenalty: 'light',
+    sessionScore: 100,
+    studiedSecs: 0,
+    taskDone: [false, false, false],
+    streak: 7,
+    totalSessions: 0
+  };
+
+  var circumference = 376.99;
+
+  // ── localStorage helpers ──
+  function save() {
+    try {
+      localStorage.setItem('fl_streak', state.streak);
+      localStorage.setItem('fl_sessions', state.totalSessions);
+      localStorage.setItem('fl_tasks', JSON.stringify(state.taskDone));
+    } catch(e) {}
+  }
+  function load() {
+    try {
+      var s = parseInt(localStorage.getItem('fl_streak'));
+      if (!isNaN(s)) state.streak = s;
+      var ss = parseInt(localStorage.getItem('fl_sessions'));
+      if (!isNaN(ss)) state.totalSessions = ss;
+      var t = JSON.parse(localStorage.getItem('fl_tasks'));
+      if (t && t.length === 3) state.taskDone = t;
+    } catch(e) {}
+  }
+
+  // ── Helpers ──
+  function fmt(s) {
+    var m = Math.floor(s / 60), sec = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+    document.getElementById(id).classList.add('active');
+  }
+  function el(id) { return document.getElementById(id); }
+
+  // ── Init ──
+  function init() {
+    load();
+    el('streak-count').textContent = state.streak;
+    el('home-time').textContent = fmt(state.totalSecs);
+    renderTasks();
+    updateProgress();
+  }
+
+  // ── Duration buttons ──
+  document.querySelectorAll('.dur-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.dur-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      state.selectedMins = parseInt(btn.dataset.mins);
+      state.totalSecs = state.selectedMins * 60;
+      state.remainSecs = state.totalSecs;
+      el('home-time').textContent = fmt(state.remainSecs);
+    });
+  });
+
+  // ── START ──
+  el('start-btn').addEventListener('click', function() {
+    state.sessionScore = 100;
+    state.exitCount = 0;
+    state.remainSecs = state.totalSecs;
+    state.studiedSecs = 0;
+    el('live-score').textContent = state.sessionScore;
+    el('focus-time').textContent = fmt(state.remainSecs);
+    el('ring-fill').style.strokeDashoffset = '0';
+    el('ring-pct').textContent = '0%';
+    showScreen('focus');
+    startTimer();
+  });
+
+  function startTimer() {
+    clearInterval(state.timerInterval);
+    state.timerInterval = setInterval(function() {
+      state.remainSecs--;
+      state.studiedSecs++;
+      var elapsed = state.totalSecs - state.remainSecs;
+      var progress = elapsed / state.totalSecs;
+      el('focus-time').textContent = fmt(state.remainSecs);
+      el('ring-fill').style.strokeDashoffset = String(circumference * (1 - progress));
+      el('ring-pct').textContent = Math.round(progress * 100) + '%';
+      if (state.remainSecs <= 0) {
+        clearInterval(state.timerInterval);
+        showResult(false);
+      }
+    }, 1000);
+  }
+
+  // ── ESCAPE ──
+  el('escape-btn').addEventListener('click', function() {
+    clearInterval(state.timerInterval);
+    state.exitCount++;
+    el('exit-count').textContent = state.exitCount;
+    state.selectedPenalty = 'light';
+    refreshPenaltyUI();
+    showScreen('penalty');
+  });
+
+  function selectPenalty(level) {
+    state.selectedPenalty = level;
+    refreshPenaltyUI();
+  }
+  function refreshPenaltyUI() {
+    ['light','mid','heavy'].forEach(function(l) {
+      el('opt-' + l).classList.toggle('selected', l === state.selectedPenalty);
+    });
+  }
+
+  function backToFocus() {
+    state.exitCount--;
+    showScreen('focus');
+    startTimer();
+  }
+
+  function confirmEscape() {
+    var penalties = { light: 20, mid: 30, heavy: 50 };
+    state.sessionScore = Math.max(0, state.sessionScore - penalties[state.selectedPenalty]);
+
+    if (state.selectedPenalty === 'heavy') {
+      state.streak = 0;
+      el('streak-count').textContent = '0';
+      save();
+    }
+
+    if (state.selectedPenalty === 'mid') {
+      startWait(60, function() { showResult(true); });
+    } else {
+      showResult(true);
+    }
+  }
+
+  // 強制待機
+  function startWait(secs, cb) {
+    var overlay = el('wait-overlay');
+    overlay.classList.add('active');
+    el('wait-num').textContent = secs;
+    var t = setInterval(function() {
+      secs--;
+      el('wait-num').textContent = secs;
+      if (secs <= 0) {
+        clearInterval(t);
+        overlay.classList.remove('active');
+        cb();
+      }
+    }, 1000);
+  }
+
+  // ── RESULT ──
+  function showResult(escaped) {
+    clearInterval(state.timerInterval);
+    state.totalSessions++;
+    save();
+
+    var studiedMin = Math.max(1, Math.round(state.studiedSecs / 60));
+    var score = state.sessionScore;
+
+    el('final-score').textContent = score;
+    el('study-time').textContent = studiedMin + '分';
+    el('exit-num').textContent = state.exitCount + '回';
+    el('total-sessions').textContent = state.totalSessions + '回';
+    el('streak-result').textContent = state.streak + '日';
+
+    var scoreEl = el('final-score');
+    var gradeEl = el('score-grade');
+
+    if (score >= 90) {
+      scoreEl.style.color = 'var(--green)';
+      gradeEl.style.background = 'var(--green-bg)';
+      gradeEl.style.color = 'var(--green-dark)';
+      gradeEl.textContent = 'S — 完璧な集中';
+      el('ai-comment').textContent = '理想ペース維持中。この調子で続けよう！';
+      el('result-title').textContent = '完璧！';
+    } else if (score >= 70) {
+      scoreEl.style.color = 'var(--amber)';
+      gradeEl.style.background = 'var(--amber-bg)';
+      gradeEl.style.color = 'var(--amber-dark)';
+      gradeEl.textContent = 'B — 良いペース';
+      el('ai-comment').textContent = state.exitCount + '回離脱あり。次回は離脱前に深呼吸を。';
+      el('result-title').textContent = 'よくできました';
+    } else if (score >= 50) {
+      scoreEl.style.color = 'var(--red)';
+      gradeEl.style.background = 'var(--red-bg)';
+      gradeEl.style.color = 'var(--red-dark)';
+      gradeEl.textContent = 'C — 改善の余地あり';
+      el('ai-comment').textContent = '集中率が低い。スマホ触りすぎかも。';
+      el('result-title').textContent = 'まだまだ';
+    } else {
+      scoreEl.style.color = 'var(--red-dark)';
+      gradeEl.style.background = '#F7C1C1';
+      gradeEl.style.color = 'var(--red-dark)';
+      gradeEl.textContent = 'D — 要改善';
+      el('ai-comment').textContent = '離脱しすぎ。ペナルティを「重い」に変えてみて。';
+      el('result-title').textContent = '逃げすぎ';
+    }
+
+    showScreen('result');
+  }
+
+  // ── HOME ──
+  function goHome() {
+    clearInterval(state.timerInterval);
+    state.remainSecs = state.totalSecs;
+    el('home-time').textContent = fmt(state.remainSecs);
+    showScreen('home');
+  }
+
+  // ── TASKS ──
+  function toggleTask(n) {
+    state.taskDone[n-1] = !state.taskDone[n-1];
+    renderTasks();
+    updateProgress();
+    save();
+  }
+  function renderTasks() {
+    for (var i = 1; i <= 3; i++) {
+      var done = state.taskDone[i-1];
+      el('t' + i).classList.toggle('done', done);
+      el('tn' + i).classList.toggle('done', done);
+    }
+  }
+  function updateProgress() {
+    var done = state.taskDone.filter(Boolean).length;
+    var pct = Math.round(done / 3 * 100);
+    el('today-pct').textContent = pct + '%';
+    el('prog-fill').style.width = pct + '%';
+  }
+
+  window.toggleTask = toggleTask;
+  window.selectPenalty = selectPenalty;
+  window.backToFocus = backToFocus;
+  window.confirmEscape = confirmEscape;
+  window.goHome = goHome;
+
+  init();
+</script>
+</body>
+</html>
